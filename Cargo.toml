@@ -2,10 +2,20 @@
 name = "zero2prod"
 version = "0.1.0"
 edition = "2021"
+authors = ["Muhammad Taaha <taaha827@gmail.com>"]
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path= "src/main.rs"
+name="zero2prod"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+serde = { version = "1", features = ["derive"]}
 
 actix-web = "4.0.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+reqwest = "0.11"
