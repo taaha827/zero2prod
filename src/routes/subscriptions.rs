@@ -1,39 +1,36 @@
 // This is an example of a method like macro, that will use the  struct given to it and will
 // Create serialize and deserialize attributes from it.
-use actix_web::{ web, HttpResponse,};
-use sqlx::{PgPool};
-use chrono::Utc; 
-use uuid::Uuid;
+use actix_web::{web, HttpResponse};
+use chrono::Utc;
+use sqlx::PgPool;
 use tracing::Instrument;
+use uuid::Uuid;
 #[derive(serde::Deserialize)]
-pub struct FormData{
-    email:String,
-    name:String
+pub struct FormData {
+    email: String,
+    name: String,
 }
-pub async fn subscribe(_form:web::Form<FormData>, _pool : web::Data<PgPool>) -> HttpResponse {
-    let request_id = Uuid::new_v4();
-    let request_span = tracing::info_span!(
-        "Adding a new subscriber.",
-        %request_id,
-        subscriber_email = %_form.email,
-        subscriber_name= %_form.name
-    );
-    let _request_span_guard = request_span.enter();
-    let query_span = tracing::info_span!(
-        "Saving new subscriber details in the database"
-);
-  
-    tracing::info!(
-        "request_id {} - Adding '{}' '{}' as a new subscriber.",
-        request_id,
-        _form.email,
-        _form.name
-);
-tracing::info!(
-    "request_id {} - Saving new subscriber details in the database",
-    request_id
-);
-    match sqlx::query!(
+
+#[tracing::instrument(
+    name = "Adding a new subscriber", skip(_form, _pool),
+    fields(
+  subscriber_email = %_form.email, subscriber_name= %_form.name
+) )]
+pub async fn subscribe(_form: web::Form<FormData>, _pool: web::Data<PgPool>) -> HttpResponse {
+    match insert_subscriber(&_pool,& _form)
+    .await
+    {
+        Ok(_) =>  HttpResponse::Ok().finish(),
+        Err(_err) => HttpResponse::InternalServerError().finish()
+     
+    }
+}
+#[tracing::instrument(
+    name = "Saving new subscriber details in the database",
+        skip(_form, _pool)
+)]
+pub async fn insert_subscriber(_pool: &PgPool, _form:&FormData) -> Result<(),sqlx::Error>{
+    sqlx::query!(
         r#"
         INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES ($1, $2, $3, $4)
         "#,
@@ -42,22 +39,12 @@ tracing::info!(
         _form.name,
         Utc::now()
     )
-    .execute(_pool.get_ref())
-    .instrument(query_span)
+    .execute(_pool)
     .await
-    {
-        Ok(_) => {
-            tracing::info!(
-                "request_id {} - New subscriber details have been saved",
-                request_id
-            );
-            HttpResponse::Ok().finish()
-        },
-        Err(err) => {
-            tracing::error!(  "request_id {} - Failed to execute query: {:?}",
-            request_id,
-            err);
-            HttpResponse::InternalServerError().finish()
-        }
-    }
+    .map_err(|e|{
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
+    })?;
+    Ok(())
+
 }

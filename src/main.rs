@@ -3,37 +3,25 @@ use sqlx::PgPool;
 use std::net::TcpListener;
 use uuid::Uuid;
 use zero2prod::startup::run;
-
-use tracing::subscriber::set_global_default;
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
-use tracing_log::LogTracer;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use secrecy::ExposeSecret;
 use zero2prod::configuration::get_configurations;
 // Using Declarative macro to technically create a main function that will run asynchrnously, as by default you can not have the main function
 // Of a rust service set as async
-#[actix_web::main]
+use zero2prod::telementary::{get_subscriber, init_subscriber};
+
 /*
 Returning A Result Data type, remember that by default RUST treat lines of code as expression (i.e: Lines that perform an action and return a value, and the last line of a function is always implied as return statement)
 */
 // Result<()> is used so that it shows that it will return OK signal without any value
+#[actix_web::main]
 // Or error if needed
 async fn main() -> std::io::Result<()> {
     // Redirect all `log`'s events to our subscriber
-    LogTracer::init().expect("Failed to set logger");
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let formatting_layer = BunyanFormattingLayer::new(
-        "zero2prod".into(),
-        // Output the formatted spans to stdout. std::io::stdout
-        std::io::stdout,
-    );
-    let subscriber = Registry::default()
-        .with(env_filter)
-        .with(JsonStorageLayer)
-        .with(formatting_layer);
-    set_global_default(subscriber).expect("Failed to set subscriber");
+    let subscriber = get_subscriber("zero2prod".into(), "info".into(),std::io::stdout);
+    init_subscriber(subscriber);
     let mut configuration = get_configurations().expect("Failed to read configuration");
     configuration.database_settings.database_name = Uuid::new_v4().to_string();
-    let connection_pool = PgPool::connect(&configuration.database_settings.connection_string())
+    let connection_pool = PgPool::connect(&configuration.database_settings.connection_string().expose_secret())
         .await
         .expect("Failed to connect to Postgres.");
     // Bind returns a RESULT, so if we want to cater that we use expect, which will cause the code to exit if the bind function returns an error
